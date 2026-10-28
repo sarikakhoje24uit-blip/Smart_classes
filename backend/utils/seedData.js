@@ -14,20 +14,21 @@ import Report from '../models/Report.js';
 
 dotenv.config();
 
-const seedDB = async () => {
+export const seedDB = async (isCli = false) => {
   try {
-    await mongoose.connect(process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/kashvi_smartclass');
-    console.log('🔄 Connected to MongoDB. Seeding initial data...');
-
-    const collections = await mongoose.connection.db.listCollections({}, { nameOnly: true }).toArray();
-    const populatedCollections = await Promise.all(collections.map(async ({ name }) => ({
-      name,
-      hasRecords: await mongoose.connection.db.collection(name).countDocuments({}, { limit: 1 }) > 0
-    })));
-    const populatedNames = populatedCollections.filter(collection => collection.hasRecords).map(collection => collection.name);
-    if (populatedNames.length) {
-      throw new Error(`Seeding stopped: database collections already contain records (${populatedNames.join(', ')}). Demo seeding never deletes or overwrites data.`);
+    if (mongoose.connection.readyState !== 1) {
+      await mongoose.connect(process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/kashvi_smartclass');
+      console.log('🔄 Connected to MongoDB. Checking demo data...');
     }
+
+    const existingAdmin = await User.findOne({ email: 'admin@kashvi.com' });
+    if (existingAdmin) {
+      console.log('✅ Demo users (admin@kashvi.com, etc.) already exist in MongoDB.');
+      if (isCli) process.exit(0);
+      return;
+    }
+
+    console.log('🌱 No demo users found. Seeding initial accounts and records...');
 
     // 1. Create Core Users
     const admin = await User.create({
@@ -306,11 +307,15 @@ const seedDB = async () => {
     });
 
     console.log('✅ Seeding completed successfully!');
-    process.exit(0);
+    if (isCli) process.exit(0);
   } catch (error) {
     console.error('❌ Error during seeding:', error);
-    process.exit(1);
+    if (isCli) process.exit(1);
+    throw error;
   }
 };
 
-seedDB();
+// Auto-run if executed directly via CLI
+if (process.argv[1] && process.argv[1].replace(/\\/g, '/').endsWith('seedData.js')) {
+  seedDB(true);
+}

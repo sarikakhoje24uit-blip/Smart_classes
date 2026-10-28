@@ -12,14 +12,14 @@ import apiRoutes from './routes/index.js';
 import errorHandler from './middleware/errorHandler.js';
 import { handleRazorpayWebhook } from './controllers/feeController.js';
 
-// Load environment variables
-dotenv.config();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Load environment variables reliably from backend/.env
+dotenv.config({ path: path.join(__dirname, '.env') });
 if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
   throw new Error('JWT_SECRET must be a unique value with at least 32 characters in backend/.env');
 }
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 // Initialize Express App
 const app = express();
