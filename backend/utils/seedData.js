@@ -1,6 +1,10 @@
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
+import dns from 'dns';
 import User from '../models/User.js';
+
+// Resolve MongoDB SRV records via Google DNS (fixes querySrv ECONNREFUSED on local ISPs)
+dns.setServers(['8.8.8.8', '8.8.4.4']);
 import Attendance from '../models/Attendance.js';
 import Homework from '../models/Homework.js';
 import Test from '../models/Test.js';
