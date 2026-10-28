@@ -23,6 +23,11 @@ import toast from 'react-hot-toast';
 import { ACADEMIC_CLASSES } from '../constants/academicClasses';
 import { useLanguage } from '../context/LanguageContext';
 
+const ACADEMIC_MONTHS = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'
+];
+
 export const AdminDashboard = () => {
   const { t } = useLanguage();
   const location = useLocation();
@@ -72,6 +77,8 @@ export const AdminDashboard = () => {
 
   // Fee Modal State
   const [showFeeModal, setShowFeeModal] = useState(false);
+  const [feeMonthFilter, setFeeMonthFilter] = useState('all');
+  const [feeYearFilter, setFeeYearFilter] = useState('all');
   const [newFee, setNewFee] = useState({
     studentId: '',
     month: 'September',
@@ -79,13 +86,36 @@ export const AdminDashboard = () => {
     dueDate: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
   });
 
+  const fetchFeeStats = async (month = feeMonthFilter, year = feeYearFilter) => {
+    try {
+      const [statsRes, feesRes] = await Promise.all([
+        api.get('/admin/dashboard-stats', { params: { month, year } }),
+        api.get('/fees', { params: { month, year } })
+      ]);
+      if (statsRes.data?.stats) {
+        setStats(prev => ({ ...prev, ...statsRes.data.stats }));
+      }
+      if (feesRes.data?.fees) {
+        setFees(feesRes.data.fees);
+      }
+    } catch (err) {
+      console.error('Failed to filter fee telemetry:', err);
+    }
+  };
+
+  const handleFeeFilterChange = (month, year) => {
+    setFeeMonthFilter(month);
+    setFeeYearFilter(year);
+    fetchFeeStats(month, year);
+  };
+
   const fetchData = async () => {
     setLoading(true);
     try {
       const [statsRes, usersRes, feesRes, ttRes, notesRes, enquiriesRes] = await Promise.all([
-        api.get('/admin/dashboard-stats'),
+        api.get('/admin/dashboard-stats', { params: { month: feeMonthFilter, year: feeYearFilter } }),
         api.get('/admin/users'),
-        api.get('/fees'),
+        api.get('/fees', { params: { month: feeMonthFilter, year: feeYearFilter } }),
         api.get('/timetable'),
         api.get('/notes'),
         api.get('/admission-enquiries')
@@ -353,13 +383,45 @@ export const AdminDashboard = () => {
               <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5 backdrop-blur-xl">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-semibold text-slate-400">{t('Total Fee Collections')}</span>
-                  <div className="rounded-xl bg-emerald-500/10 p-2.5 text-emerald-400">
-                    <DollarSign className="h-5 w-5" />
+                  <div className="rounded-xl bg-emerald-500/10 p-2 text-emerald-400">
+                    <DollarSign className="h-4 w-4" />
                   </div>
                 </div>
+                <div className="mt-2.5 flex items-center gap-1.5">
+                  <select
+                    value={feeMonthFilter}
+                    onChange={(e) => handleFeeFilterChange(e.target.value, feeYearFilter)}
+                    className="w-1/2 rounded-lg border border-slate-800 bg-slate-950 px-2 py-1 text-[11px] font-medium text-slate-200 outline-none focus:border-indigo-500"
+                    title={t('Filter by Month')}
+                  >
+                    <option value="all">{t('All Months')}</option>
+                    {ACADEMIC_MONTHS.map(m => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={feeYearFilter}
+                    onChange={(e) => handleFeeFilterChange(feeMonthFilter, e.target.value)}
+                    className="w-1/2 rounded-lg border border-slate-800 bg-slate-950 px-2 py-1 text-[11px] font-medium text-slate-200 outline-none focus:border-indigo-500"
+                    title={t('Filter by Year')}
+                  >
+                    <option value="all">{t('All Years')}</option>
+                    <option value="2024">2024</option>
+                    <option value="2025">2025</option>
+                    <option value="2026">2026</option>
+                    <option value="2027">2027</option>
+                  </select>
+                </div>
                 <div className="mt-3">
-                  <h3 className="text-2xl font-black text-white">₹{stats?.totalCollectedFees?.toLocaleString() || '1,45,000'}</h3>
-                  <p className="mt-1 text-[11px] text-emerald-400">{t('Verified Settlements')}</p>
+                  <h3 className="text-2xl font-black text-white">
+                    ₹{(stats?.totalCollectedFees ?? stats?.totalCollected ?? 0).toLocaleString()}
+                  </h3>
+                  <div className="mt-1 flex items-center justify-between text-[11px]">
+                    <span className="text-emerald-400">{t('Verified Collections')}</span>
+                    {Number(stats?.pendingFee) > 0 && (
+                      <span className="text-amber-400 font-semibold">{t('Pending')}: ₹{Number(stats.pendingFee).toLocaleString()}</span>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -625,10 +687,43 @@ export const AdminDashboard = () => {
 
         {/* 4. FEE INVOICES VIEW (Bug B3) */}
         {path.includes('/fees') && (
-          <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 backdrop-blur-xl">
-            <div className="mb-4 flex items-center justify-between">
-              <h3 className="text-sm font-bold text-white">Tuition & Institutional Invoices</h3>
-              <span className="text-xs text-emerald-400 font-bold">{fees.length} Total Records</span>
+          <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 backdrop-blur-xl space-y-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-slate-800 pb-4">
+              <div>
+                <h3 className="text-base font-bold text-white">{t('Tuition & Fee Collection Ledger')}</h3>
+                <p className="mt-0.5 text-xs text-slate-400">
+                  {t('Filtered Total Collection')}: <span className="font-bold text-emerald-400">₹{(stats?.totalCollectedFees ?? stats?.totalCollected ?? 0).toLocaleString()}</span>
+                  {Number(stats?.pendingFee) > 0 && (
+                    <span className="ml-3 font-semibold text-amber-400">({t('Pending')}: ₹{Number(stats.pendingFee).toLocaleString()})</span>
+                  )}
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <select
+                  value={feeMonthFilter}
+                  onChange={(e) => handleFeeFilterChange(e.target.value, feeYearFilter)}
+                  className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-1.5 text-xs font-semibold text-slate-200 outline-none focus:border-indigo-500"
+                >
+                  <option value="all">{t('All Months')}</option>
+                  {ACADEMIC_MONTHS.map(m => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                </select>
+                <select
+                  value={feeYearFilter}
+                  onChange={(e) => handleFeeFilterChange(feeMonthFilter, e.target.value)}
+                  className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-1.5 text-xs font-semibold text-slate-200 outline-none focus:border-indigo-500"
+                >
+                  <option value="all">{t('All Years')}</option>
+                  <option value="2024">2024</option>
+                  <option value="2025">2025</option>
+                  <option value="2026">2026</option>
+                  <option value="2027">2027</option>
+                </select>
+                <span className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-1.5 text-xs font-bold text-emerald-400">
+                  {fees.length} {t('Records')}
+                </span>
+              </div>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">

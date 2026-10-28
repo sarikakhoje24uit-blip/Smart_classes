@@ -7,7 +7,8 @@ import {
   getChildTests,
   getChildHomework,
   getChildTimetable,
-  getChildAnnouncements
+  getChildAnnouncements,
+  getChildCourses
 } from '../controllers/parentController.js';
 import { protect } from '../middleware/auth.js';
 import { authorize } from '../middleware/roleCheck.js';
@@ -27,4 +28,5 @@ router.get('/children/:id/homework', getChildHomework);
 router.get('/children/:id/timetable', getChildTimetable);
 router.get('/children/:id/announcements', getChildAnnouncements);
 router.get('/children/:id/check-ins', getChildCheckIns);
+router.get('/children/:id/courses', getChildCourses);
 export default router;

@@ -51,7 +51,7 @@ const makeReceipt = (fee) => ({
 // @route   GET /api/fees
 export const getAllFees = async (req, res, next) => {
   try {
-    const { status, class: className, studentId } = req.query;
+    const { status, class: className, studentId, month, year } = req.query;
     let query = {};
 
     if (req.user.role === 'admin') {
@@ -99,6 +99,12 @@ export const getAllFees = async (req, res, next) => {
       if (status) query.status = status;
     } else {
       return res.status(403).json({ success: false, message: 'Unauthorized role' });
+    }
+
+    if (month && month !== 'all') query.month = month;
+    if (year && year !== 'all') {
+      const numericYear = Number(year);
+      query.year = Number.isNaN(numericYear) ? year : numericYear;
     }
 
     const fees = await FeeModel.find(query).sort({ createdAt: -1 });

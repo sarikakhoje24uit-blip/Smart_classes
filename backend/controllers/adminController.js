@@ -351,24 +351,38 @@ export const getAuditLogs = async (req, res, next) => {
 // @route   GET /api/admin/dashboard-stats
 export const getDashboardStats = async (req, res, next) => {
   try {
+    const { month, year } = req.query;
+    const feeMatch = {};
+    if (month && month !== 'all') {
+      feeMatch.month = month;
+    }
+    if (year && year !== 'all') {
+      const numericYear = Number(year);
+      feeMatch.year = Number.isNaN(numericYear) ? year : numericYear;
+    }
+
     const [totalStudents, totalTeachers, totalParents, totalAnnouncements, recentFees, recentAttendance] = await Promise.all([
       User.countDocuments({ role: 'student' }),
       User.countDocuments({ role: 'teacher' }),
       User.countDocuments({ role: 'parent' }),
       Announcement.countDocuments({ isPublished: true }),
-      Fee.find().sort({ createdAt: -1 }).limit(5),
+      Fee.find(feeMatch).sort({ createdAt: -1 }).limit(5),
       Attendance.find().sort({ date: -1 }).limit(10)
     ]);
 
-    const feeAgg = await Fee.aggregate([
-      {
-        $group: {
-          _id: '$status',
-          totalAmount: { $sum: '$amount' },
-          count: { $sum: 1 }
-        }
+    const pipeline = [];
+    if (Object.keys(feeMatch).length > 0) {
+      pipeline.push({ $match: feeMatch });
+    }
+    pipeline.push({
+      $group: {
+        _id: '$status',
+        totalAmount: { $sum: '$amount' },
+        count: { $sum: 1 }
       }
-    ]);
+    });
+
+    const feeAgg = await Fee.aggregate(pipeline);
 
     let totalCollected = 0;
     let pendingFee = 0;
@@ -385,7 +399,10 @@ export const getDashboardStats = async (req, res, next) => {
         totalParents,
         totalAnnouncements,
         totalCollected,
+        totalCollectedFees: totalCollected,
         pendingFee,
+        selectedMonth: month || 'all',
+        selectedYear: year || 'all',
         recentFees,
         recentAttendance
       }

@@ -6,7 +6,9 @@ import {
   submitHomework,
   getStudentTests,
   submitTestAttempt,
-  getLeaderboard
+  getLeaderboard,
+  getStudentCourses,
+  updateStudentCourses
 } from '../controllers/studentController.js';
 import { generateAIStudyPlan, getLatestStudyPlan } from '../controllers/aiController.js';
 import { protect } from '../middleware/auth.js';
@@ -26,5 +28,7 @@ router.post('/tests/:id/submit', submitTestAttempt);
 router.get('/leaderboard', getLeaderboard);
 router.get('/study-plan', getLatestStudyPlan);
 router.post('/study-plan', generateAIStudyPlan);
+router.get('/courses', getStudentCourses);
+router.post('/courses', updateStudentCourses);
 
 export default router;

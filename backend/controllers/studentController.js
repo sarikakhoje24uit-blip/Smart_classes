@@ -4,6 +4,7 @@ import Homework from '../models/Homework.js';
 import Test from '../models/Test.js';
 import Report from '../models/Report.js';
 import Announcement from '../models/Announcement.js';
+import Course from '../models/Course.js';
 import { evaluateStudentAnswers, toStudentTest } from '../utils/studentTest.js';
 
 // @desc    Get student dashboard summary
@@ -286,6 +287,70 @@ export const getLeaderboard = async (req, res, next) => {
     });
 
     res.status(200).json({ success: true, count: rankedLeaderboard.length, leaderboard: rankedLeaderboard });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Get student enrolled courses and subject fee breakdown
+// @route   GET /api/student/courses
+export const getStudentCourses = async (req, res, next) => {
+  try {
+    const student = await User.findById(req.user._id).populate('enrolledCourses');
+    if (!student) {
+      return res.status(404).json({ success: false, message: 'Student record not found' });
+    }
+
+    const availableCourses = await Course.find({ class: student.class }).sort({ name: 1 });
+    
+    // If student has no enrolledCourses yet, default to all courses of their class
+    let enrolled = student.enrolledCourses || [];
+    if (enrolled.length === 0 && availableCourses.length > 0) {
+      enrolled = availableCourses;
+      student.enrolledCourses = availableCourses.map(c => c._id);
+      await student.save();
+    }
+
+    const totalFee = enrolled.reduce((sum, c) => sum + (Number(c.fee) || 0), 0);
+
+    res.status(200).json({
+      success: true,
+      availableCourses,
+      enrolledCourses: enrolled,
+      totalFee
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Enroll / update student's selected courses and recalculate fee
+// @route   POST /api/student/courses
+export const updateStudentCourses = async (req, res, next) => {
+  try {
+    const { courseIds } = req.body;
+    if (!Array.isArray(courseIds)) {
+      return res.status(400).json({ success: false, message: 'courseIds must be an array of course IDs' });
+    }
+
+    const student = await User.findById(req.user._id);
+    if (!student) {
+      return res.status(404).json({ success: false, message: 'Student record not found' });
+    }
+
+    // Verify all courses exist and belong to the student's class
+    const validCourses = await Course.find({ _id: { $in: courseIds }, class: student.class });
+    student.enrolledCourses = validCourses.map(c => c._id);
+    await student.save();
+
+    const totalFee = validCourses.reduce((sum, c) => sum + (Number(c.fee) || 0), 0);
+
+    res.status(200).json({
+      success: true,
+      message: 'Enrolled courses updated successfully',
+      enrolledCourses: validCourses,
+      totalFee
+    });
   } catch (error) {
     next(error);
   }

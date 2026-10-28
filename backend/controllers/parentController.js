@@ -6,6 +6,7 @@ import Report from '../models/Report.js';
 import Test from '../models/Test.js';
 import Timetable from '../models/Timetable.js';
 import Announcement from '../models/Announcement.js';
+import Course from '../models/Course.js';
 import { verifyParentChildAccess } from '../utils/parentAuth.js';
 
 // @desc    Get parent's linked children
@@ -197,6 +198,46 @@ export const getChildAnnouncements = async (req, res, next) => {
       ]
     }).sort({ createdAt: -1 }).limit(10);
     res.status(200).json({ success: true, announcements });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Get child enrolled courses and subject fee breakdown
+// @route   GET /api/parent/children/:id/courses
+export const getChildCourses = async (req, res, next) => {
+  try {
+    const studentId = req.params.id;
+    const isAuthorized = await verifyParentChildAccess(req.user, studentId);
+    if (!isAuthorized && req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied: You do not have permission to view course records for this student.'
+      });
+    }
+
+    const student = await User.findById(studentId).populate('enrolledCourses');
+    if (!student) {
+      return res.status(404).json({ success: false, message: 'Student record not found' });
+    }
+
+    let enrolled = student.enrolledCourses || [];
+    if (enrolled.length === 0) {
+      const classCourses = await Course.find({ class: student.class }).sort({ name: 1 });
+      if (classCourses.length > 0) {
+        enrolled = classCourses;
+      }
+    }
+
+    const totalFee = enrolled.reduce((sum, c) => sum + (Number(c.fee) || 0), 0);
+
+    res.status(200).json({
+      success: true,
+      studentName: student.name,
+      class: student.class,
+      enrolledCourses: enrolled,
+      totalFee
+    });
   } catch (error) {
     next(error);
   }

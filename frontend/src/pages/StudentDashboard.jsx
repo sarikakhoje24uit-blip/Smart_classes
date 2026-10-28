@@ -49,6 +49,10 @@ export const StudentDashboard = () => {
   const [solutionFileUrl, setSolutionFileUrl] = useState('');
   const [submittingHw, setSubmittingHw] = useState(false);
 
+  // Enrolled Courses & Fee Breakdown State
+  const [coursesData, setCoursesData] = useState({ availableCourses: [], enrolledCourses: [], totalFee: 0 });
+  const [savingCourses, setSavingCourses] = useState(false);
+
   // AI Study Plan State (Bugs D1-D7)
   const [aiPlan, setAiPlan] = useState(null);
   const [aiLoading, setAiLoading] = useState(false);
@@ -59,7 +63,7 @@ export const StudentDashboard = () => {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [dashRes, attendanceRes, hwRes, lbRes, classRes, planRes, feedbackRes, testsRes] = await Promise.all([
+      const [dashRes, attendanceRes, hwRes, lbRes, classRes, planRes, feedbackRes, testsRes, coursesRes] = await Promise.all([
         api.get('/student/dashboard'),
         api.get('/student/attendance'),
         api.get('/student/homework'),
@@ -67,7 +71,8 @@ export const StudentDashboard = () => {
         api.get('/online-classes'),
         api.get('/student/study-plan').catch(() => ({ data: { plan: null } })),
         api.get('/feedback/student'),
-        api.get('/student/tests')
+        api.get('/student/tests'),
+        api.get('/student/courses').catch(() => ({ data: { availableCourses: [], enrolledCourses: [], totalFee: 0 } }))
       ]);
       setStats(dashRes.data?.stats);
       setAttendanceRecords(attendanceRes.data?.attendance || []);
@@ -76,6 +81,9 @@ export const StudentDashboard = () => {
       setOnlineClasses(classRes.data?.onlineClasses || []);
       setTests(testsRes.data?.tests || []);
       setFeedbackForms(feedbackRes.data?.forms || []);
+      if (coursesRes.data) {
+        setCoursesData(coursesRes.data);
+      }
       if (planRes.data?.plan) {
         setAiPlan(planRes.data.plan);
       }
@@ -83,6 +91,34 @@ export const StudentDashboard = () => {
       toast.error(t('Failed to load student workspace'));
     }
     setLoading(false);
+  };
+
+  const handleToggleCourse = async (courseId) => {
+    const currentEnrolled = coursesData.enrolledCourses || [];
+    const isEnrolled = currentEnrolled.some(c => (c._id || c) === courseId);
+    let newCourseIds;
+    if (isEnrolled) {
+      newCourseIds = currentEnrolled.filter(c => (c._id || c) !== courseId).map(c => c._id || c);
+    } else {
+      newCourseIds = [...currentEnrolled.map(c => c._id || c), courseId];
+    }
+
+    setSavingCourses(true);
+    try {
+      const res = await api.post('/student/courses', { courseIds: newCourseIds });
+      if (res.data?.success) {
+        setCoursesData(prev => ({
+          ...prev,
+          enrolledCourses: res.data.enrolledCourses,
+          totalFee: res.data.totalFee
+        }));
+        toast.success(t('Enrolled subjects & fee structure updated!'));
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || t('Failed to update enrolled subjects'));
+    } finally {
+      setSavingCourses(false);
+    }
   };
 
   useEffect(() => {
@@ -262,6 +298,66 @@ export const StudentDashboard = () => {
                   <p className="mt-1 text-[11px] text-slate-400">{t('Personalized study planner')}</p>
                 </div>
               </div>
+            </div>
+
+            {/* Subject Selection & Dynamic Fee Calculation (Coaching Classes Model) */}
+            <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 backdrop-blur-xl space-y-4">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between border-b border-slate-800 pb-4">
+                <div>
+                  <h3 className="text-base font-bold text-white flex items-center gap-2">
+                    <BookOpen className="h-5 w-5 text-indigo-400" />
+                    <span>{t('My Enrolled Subjects & Fee Structure')}</span>
+                  </h3>
+                  <p className="mt-1 text-xs text-slate-400">
+                    {t('Select your coaching subjects below. Your dynamic tuition fee updates automatically.')}
+                  </p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-right">
+                    <span className="block text-[10px] font-semibold uppercase tracking-wider text-emerald-400">{t('Total Subject Fee')}</span>
+                    <span className="text-xl font-black text-white">₹{(coursesData.totalFee || 0).toLocaleString()}</span>
+                  </div>
+                </div>
+              </div>
+
+              {coursesData.availableCourses.length === 0 ? (
+                <p className="text-xs text-slate-400 py-3">{t('No courses/subjects configured for Class')} {studentClass}.</p>
+              ) : (
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 pt-2">
+                  {coursesData.availableCourses.map((course) => {
+                    const isSelected = (coursesData.enrolledCourses || []).some(c => (c._id || c) === course._id);
+                    return (
+                      <div
+                        key={course._id}
+                        onClick={() => !savingCourses && handleToggleCourse(course._id)}
+                        className={`cursor-pointer rounded-xl border p-4 transition-all duration-200 select-none ${
+                          isSelected
+                            ? 'border-indigo-500/50 bg-indigo-950/30 shadow-lg shadow-indigo-900/10'
+                            : 'border-slate-800 bg-slate-950/60 hover:border-slate-700'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <h4 className="text-sm font-bold text-white">{course.name}</h4>
+                            <p className="text-[11px] text-slate-400 mt-0.5">{course.code} · {course.teacherName || t('Faculty')}</p>
+                          </div>
+                          <span className={`flex h-5 w-5 items-center justify-center rounded-md border text-xs ${
+                            isSelected
+                              ? 'border-indigo-500 bg-indigo-600 text-white'
+                              : 'border-slate-700 bg-slate-900 text-transparent'
+                          }`}>
+                            ✓
+                          </span>
+                        </div>
+                        <div className="mt-3 flex items-center justify-between border-t border-slate-800/80 pt-2 text-xs">
+                          <span className="text-slate-400">{t('Subject Fee')}:</span>
+                          <span className="font-bold text-emerald-400">₹{(Number(course.fee) || 0).toLocaleString()}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             <div className="rounded-2xl border border-indigo-500/30 bg-gradient-to-br from-slate-900/90 via-indigo-950/40 to-slate-900/90 p-6">

@@ -32,6 +32,11 @@ const courseSchema = new mongoose.Schema({
     time: String,
     room: String
   }],
+  fee: {
+    type: Number,
+    default: 0,
+    min: [0, 'Course fee cannot be negative']
+  },
   materials: [{
     title: String,
     fileUrl: String,

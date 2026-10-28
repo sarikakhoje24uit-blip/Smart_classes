@@ -13,7 +13,10 @@ import {
   ShieldCheck,
   Download,
   Megaphone,
-  AlertTriangle
+  AlertTriangle,
+  CreditCard,
+  Building,
+  BookOpen
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useLanguage } from '../context/LanguageContext';
@@ -46,12 +49,16 @@ export const ParentDashboard = () => {
   const [timetable, setTimetable] = useState([]);
   const [announcements, setAnnouncements] = useState([]);
   const [checkIns, setCheckIns] = useState([]);
+  const [coursesData, setCoursesData] = useState(null);
   const [childDataLoading, setChildDataLoading] = useState(false);
   const [childDataRefresh, setChildDataRefresh] = useState(0);
   const [loading, setLoading] = useState(true);
 
-  // Pay Now Modal State (Bugs E1-E7)
+  // Pay Now Modal State (Bugs E1-E7 & Dual Payment Modes)
   const [payingFee, setPayingFee] = useState(null);
+  const [paymentMode, setPaymentMode] = useState('online'); // 'online' | 'offline'
+  const [offlineMethod, setOfflineMethod] = useState('Cash at Institute Center');
+  const [offlineRemarks, setOfflineRemarks] = useState('');
   const [paymentStep, setPaymentStep] = useState('checkout');
   const [generatedReceipt, setGeneratedReceipt] = useState(null);
   const [paymentError, setPaymentError] = useState('');
@@ -86,20 +93,22 @@ export const ParentDashboard = () => {
         setTimetable([]);
         setAnnouncements([]);
         setCheckIns([]);
+        setCoursesData(null);
         return;
       }
 
       setChildDataLoading(true);
       try {
         const childId = selectedChild._id;
-        const [attRes, feeRes, repRes, homeworkRes, timetableRes, announcementRes, checkInRes] = await Promise.all([
+        const [attRes, feeRes, repRes, homeworkRes, timetableRes, announcementRes, checkInRes, courseRes] = await Promise.all([
           api.get(`/parent/children/${childId}/attendance`),
           api.get(`/parent/children/${childId}/fees`),
           api.get(`/parent/children/${childId}/reports`),
           api.get(`/parent/children/${childId}/homework`),
           api.get(`/parent/children/${childId}/timetable`),
           api.get(`/parent/children/${childId}/announcements`),
-          api.get(`/parent/children/${childId}/check-ins`)
+          api.get(`/parent/children/${childId}/check-ins`),
+          api.get(`/parent/children/${childId}/courses`).catch(() => ({ data: null }))
         ]);
         if (!active) return;
         setAttendance(attRes.data);
@@ -109,6 +118,7 @@ export const ParentDashboard = () => {
         setTimetable(timetableRes.data?.timetable || []);
         setAnnouncements(announcementRes.data?.announcements || []);
         setCheckIns(checkInRes.data?.checkIns || []);
+        setCoursesData(courseRes.data || null);
       } catch (err) {
         if (active) {
           toast.error(err.response?.data?.message || t('Failed to load the selected child’s details'));
@@ -119,6 +129,7 @@ export const ParentDashboard = () => {
           setTimetable([]);
           setAnnouncements([]);
           setCheckIns([]);
+          setCoursesData(null);
         }
       } finally {
         if (active) setChildDataLoading(false);
@@ -133,9 +144,31 @@ export const ParentDashboard = () => {
   // Initiate Payment Flow
   const handleOpenPayModal = (fee) => {
     setPayingFee(fee);
+    setPaymentMode('online');
+    setOfflineMethod('Cash at Institute Center');
+    setOfflineRemarks('');
     setPaymentStep('checkout');
     setGeneratedReceipt(null);
     setPaymentError('');
+  };
+
+  const handleProcessOfflinePayment = async () => {
+    if (!payingFee) return;
+    setPaymentStep('processing');
+    try {
+      const res = await api.post(`/fees/${payingFee._id}/offline`, {
+        paymentMethod: offlineMethod,
+        remarks: offlineRemarks || `Paid via ${offlineMethod}`
+      });
+      if (!res.data?.success) throw new Error(res.data?.message || 'Could not record offline payment');
+      setGeneratedReceipt(res.data.receipt);
+      setPaymentStep('receipt');
+      toast.success(t('Offline payment recorded and official receipt generated!'));
+      setChildDataRefresh((version) => version + 1);
+    } catch (err) {
+      setPaymentStep('failed');
+      setPaymentError(err.response?.data?.message || err.message || t('Offline payment failed'));
+    }
   };
 
   // Start Razorpay Checkout; the backend verifies and captures the payment.
@@ -331,6 +364,39 @@ export const ParentDashboard = () => {
                 </div>
               </div>
             </div>
+
+            {/* Enrolled Coaching Subjects & Fee Structure for Ward */}
+            {coursesData && coursesData.enrolledCourses?.length > 0 && (
+              <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 backdrop-blur-xl space-y-3">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between border-b border-slate-800 pb-3">
+                  <div className="flex items-center gap-2">
+                    <BookOpen className="h-5 w-5 text-indigo-400" />
+                    <div>
+                      <h3 className="text-sm font-bold text-white">{t('Enrolled Coaching Subjects & Tuition Fee')}</h3>
+                      <p className="text-[11px] text-slate-400">{t('Subject-wise fee breakdown for')} {selectedChild?.name}</p>
+                    </div>
+                  </div>
+                  <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-1.5 text-right">
+                    <span className="text-[10px] uppercase font-semibold text-emerald-400 block">{t('Total Subject Fee')}</span>
+                    <span className="text-base font-black text-white">₹{(coursesData.totalFee || 0).toLocaleString()}</span>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 pt-1">
+                  {coursesData.enrolledCourses.map((c) => (
+                    <div key={c._id || c.name} className="flex items-center justify-between rounded-xl bg-slate-950 p-3 border border-slate-800">
+                      <div>
+                        <p className="text-xs font-bold text-white">{c.name}</p>
+                        <p className="text-[10px] text-slate-400">{c.code} · {c.teacherName || t('Faculty')}</p>
+                      </div>
+                      <span className="rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 text-xs font-bold text-emerald-400">
+                        ₹{(Number(c.fee) || 0).toLocaleString()}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
               <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6">
                 <div className="mb-4 flex items-center gap-2">
@@ -721,9 +787,72 @@ export const ParentDashboard = () => {
                     </p>
                   </div>
 
-                  <div className="rounded-xl border border-indigo-500/20 bg-slate-950 p-4 text-xs text-slate-300">
-                    {t('Payment is securely processed in Razorpay Checkout. Available methods depend on the institute’s Razorpay account configuration.')}
+                  {/* Dual Mode Switcher: Online vs Offline */}
+                  <div className="grid grid-cols-2 gap-2 p-1 bg-slate-950 rounded-xl border border-slate-800">
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMode('online')}
+                      className={`flex items-center justify-center gap-2 py-2 text-xs font-bold rounded-lg transition-all ${
+                        paymentMode === 'online'
+                          ? 'bg-indigo-600 text-white shadow-md'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <CreditCard className="h-4 w-4" />
+                      <span>{t('Online Payment')}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMode('offline')}
+                      className={`flex items-center justify-center gap-2 py-2 text-xs font-bold rounded-lg transition-all ${
+                        paymentMode === 'offline'
+                          ? 'bg-emerald-600 text-white shadow-md'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <Building className="h-4 w-4" />
+                      <span>{t('Offline Payment')}</span>
+                    </button>
                   </div>
+
+                  {paymentMode === 'online' ? (
+                    <div className="rounded-xl border border-indigo-500/20 bg-slate-950 p-4 text-xs text-slate-300 space-y-1">
+                      <p className="font-semibold text-white">{t('Online Instant Gateway')}</p>
+                      <p>{t('Payment is securely processed via Razorpay. Supports UPI, NetBanking, Debit/Credit Cards.')}</p>
+                    </div>
+                  ) : (
+                    <div className="rounded-xl border border-emerald-500/20 bg-slate-950 p-4 text-xs space-y-3">
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                          {t('Offline Payment Method')}
+                        </label>
+                        <select
+                          value={offlineMethod}
+                          onChange={(e) => setOfflineMethod(e.target.value)}
+                          className="w-full rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-xs text-white outline-none focus:border-emerald-500"
+                        >
+                          <option value="Cash at Institute Center">{t('Cash at Institute Center')}</option>
+                          <option value="Cheque / Demand Draft">{t('Cheque / Demand Draft')}</option>
+                          <option value="Direct Bank Transfer (NEFT/RTGS)">{t('Direct Bank Transfer (NEFT/RTGS)')}</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                          {t('Receipt / Reference Note (Optional)')}
+                        </label>
+                        <input
+                          type="text"
+                          placeholder={t('e.g. Cash handed to desk / Cheque #123456')}
+                          value={offlineRemarks}
+                          onChange={(e) => setOfflineRemarks(e.target.value)}
+                          className="w-full rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-xs text-white outline-none focus:border-emerald-500"
+                        />
+                      </div>
+                      <p className="text-[11px] text-slate-400">
+                        {t('An official institute receipt (RCP-OFF-...) will be generated and logged to the student’s ledger immediately.')}
+                      </p>
+                    </div>
+                  )}
 
                   <div className="flex gap-2 pt-2">
                     <button
@@ -733,13 +862,23 @@ export const ParentDashboard = () => {
                     >
                       {t('Cancel')}
                     </button>
-                    <button
-                      type="button"
-                      onClick={handleProcessPayment}
-                      className="flex-1 rounded-xl bg-emerald-600 py-2.5 text-xs font-bold text-white shadow-lg shadow-emerald-500/25 hover:bg-emerald-500"
-                    >
-                      {t('Continue to Razorpay')}
-                    </button>
+                    {paymentMode === 'online' ? (
+                      <button
+                        type="button"
+                        onClick={handleProcessPayment}
+                        className="flex-1 rounded-xl bg-indigo-600 py-2.5 text-xs font-bold text-white shadow-lg shadow-indigo-500/25 hover:bg-indigo-500"
+                      >
+                        {t('Continue to Razorpay')}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={handleProcessOfflinePayment}
+                        className="flex-1 rounded-xl bg-emerald-600 py-2.5 text-xs font-bold text-white shadow-lg shadow-emerald-500/25 hover:bg-emerald-500"
+                      >
+                        {t('Record Offline Payment')}
+                      </button>
+                    )}
                   </div>
                 </div>
               )}

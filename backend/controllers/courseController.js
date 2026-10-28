@@ -3,12 +3,16 @@ import Course from '../models/Course.js';
 import User from '../models/User.js';
 
 const validateCourseInput = async (body = {}) => {
-  const { name, code, class: className, description = '', teacherId } = body;
+  const { name, code, class: className, description = '', teacherId, fee, cost } = body;
   if (typeof name !== 'string' || !name.trim() || name.trim().length > 120 ||
       typeof code !== 'string' || !code.trim() || code.trim().length > 40 ||
       typeof className !== 'string' || !className.trim() || className.trim().length > 60 ||
       typeof description !== 'string' || description.length > 2000) {
     return { error: 'Course name, code, class, and a valid description are required' };
+  }
+  const courseFee = Number(fee !== undefined ? fee : (cost !== undefined ? cost : 0));
+  if (Number.isNaN(courseFee) || courseFee < 0) {
+    return { error: 'Course fee must be a valid non-negative number' };
   }
   let teacher;
   if (teacherId) {
@@ -24,6 +28,7 @@ const validateCourseInput = async (body = {}) => {
       code: code.trim(),
       class: className.trim(),
       description: description.trim(),
+      fee: courseFee,
       teacherId: teacher?._id || null,
       teacherName: teacher?.name || ''
     }

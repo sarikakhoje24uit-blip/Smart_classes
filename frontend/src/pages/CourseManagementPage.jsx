@@ -6,7 +6,7 @@ import api from '../services/api';
 import { ACADEMIC_CLASSES } from '../constants/academicClasses';
 import { useLanguage } from '../context/LanguageContext';
 
-const emptyCourse = { name: '', code: '', class: '', teacherId: '', description: '' };
+const emptyCourse = { name: '', code: '', class: '', teacherId: '', description: '', fee: '' };
 
 const CourseManagementPage = () => {
   const { t } = useLanguage();
@@ -37,7 +37,7 @@ const CourseManagementPage = () => {
 
   const saveCourse = async (event) => {
     event.preventDefault();
-    const payload = { ...form, teacherId: form.teacherId || undefined };
+    const payload = { ...form, fee: Number(form.fee) || 0, teacherId: form.teacherId || undefined };
     try {
       if (editingId) await api.put(`/admin/courses/${editingId}`, payload);
       else await api.post('/admin/courses', payload);
@@ -57,7 +57,8 @@ const CourseManagementPage = () => {
       code: course.code,
       class: course.class,
       teacherId: course.teacherId || '',
-      description: course.description || ''
+      description: course.description || '',
+      fee: course.fee ?? 0
     });
   };
 
@@ -97,6 +98,7 @@ const CourseManagementPage = () => {
               <option key={teacher._id} value={teacher._id}>{teacher.name} — {teacher.subject || 'Faculty'}</option>
             ))}
           </select>
+          <input type="number" min="0" placeholder={t('Course Fee / Cost (₹)')} value={form.fee} onChange={event => setForm({ ...form, fee: event.target.value })} className="rounded-lg border border-slate-700 bg-slate-950 p-3 text-sm text-white" />
           <textarea maxLength={2000} rows={3} placeholder={t('Public course description')} value={form.description} onChange={event => setForm({ ...form, description: event.target.value })} className="rounded-lg border border-slate-700 bg-slate-950 p-3 text-sm text-white md:col-span-2" />
           <div className="flex gap-2 md:col-span-2">
             <button className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white"><Plus className="h-4 w-4" /> {editingId ? t('Save changes') : t('Create course')}</button>
@@ -109,7 +111,12 @@ const CourseManagementPage = () => {
               <div className="flex items-start gap-3">
                 <BookOpen className="mt-1 h-5 w-5 text-indigo-400" />
                 <div>
-                  <h3 className="text-sm font-bold text-white">{course.name} <span className="text-xs font-normal text-indigo-300">{course.code}</span></h3>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-bold text-white">{course.name} <span className="text-xs font-normal text-indigo-300">{course.code}</span></h3>
+                    <span className="rounded-md bg-emerald-500/10 px-2 py-0.5 text-xs font-bold text-emerald-400 border border-emerald-500/20">
+                      ₹{(Number(course.fee) || 0).toLocaleString()}
+                    </span>
+                  </div>
                   <p className="mt-1 text-xs text-slate-400">{t('Class')} {course.class} · {course.teacherName || t('No teacher assigned')}</p>
                   {course.description && <p className="mt-2 text-sm text-slate-500">{course.description}</p>}
                 </div>
